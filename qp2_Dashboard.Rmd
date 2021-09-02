@@ -1,0 +1,364 @@
+---
+title: "Office Mart Analysis: Interactive Shiny Flexdashboard"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:  
+  flexdashboard::flex_dashboard:
+    theme: united
+    navbar:
+          - {title: Campaign Type}
+    social: menu
+    orientation: columns
+    source_code: embed
+    background-color: white
+runtime: shiny
+---
+
+
+```{r setup, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE, echo=FALSE}
+# Course: OMSBA 5210, Seattle University
+# Purpose: Quick Project 2
+# Date: August 8th, 2021
+# Author: Jordan Gropper, Andrew Nalundasan
+
+```
+
+```{r global, include=FALSE, echo = FALSE}
+library(ggannotate)    # annotation tool
+library(gridExtra)     # use to put graphs together in the same frame
+library(janitor)       # contains tidyverse functions for cross-tables
+library(knitr)         # contains some table formatting functions
+library(ggplot2)        # contains a custom correlation plot
+library(scales)        # to get $ and , on axis in graph
+library(tidyverse)     # contains ggplot2, dplyr, and several other packages
+library(corrplot)      # used for correlation plot with good looks below
+library(tidyr)         # tidy r
+library(kableExtra)    # extra kable formatting
+library(vtable)        # NHK special
+library(gghighlight)   # visual formatting - highlights
+library(agricolae)     # for statistical testing
+library(huxtable)      # table formatting
+library(jtools)        # export summs table
+library(car)           # linear hypothesis
+library(webshot)       # save a kable() table 
+library(shiny)         # Dashboard Animations
+library(gganimate)     #line animation
+library(ggiraph)       # interactive line graph
+library(plotly)        # For input bar
+```
+
+
+
+```{r include=FALSE, echo = FALSE}
+# read data into environment and assign to variable
+cereal_product <- read_csv("mtp_product_data.csv")
+cereal_sales <- read_csv("mtp_sales_data.csv")
+
+# create new column for 'company' for each cereal company
+cereal_product <- cereal_product %>% 
+  mutate(company = case_when(
+    str_starts(brand, 'GENERAL') ~ 'General Mills', 
+    str_starts(brand, 'KELLOGGS') ~ 'Kelloggs', 
+    str_starts(brand, 'POST') ~ 'Post'))
+
+# remove cereal company name from 'brand' column
+cereal_product <- cereal_product %>% 
+  mutate(brand = str_replace_all(brand, "GENERAL MILLS", "")) %>% 
+  mutate(brand = str_replace_all(brand, "KELLOGGS", "")) %>% 
+  mutate(brand = str_replace_all(brand, "POST", "")) %>% 
+  mutate(flavor = stringr::str_to_title(flavor)) %>% 
+  mutate(brand = str_to_title(brand)) %>% 
+  mutate(brand = str_replace_all(brand, "Cinnamon Tst Cr", "Cinnamon Toast Crunch"))
+
+# update UPC formatting  
+cereal_product <- cereal_product %>%
+  mutate(UPC = str_sub(UPC, 4, -1))
+
+# update UPC formatting
+cereal_product <- cereal_product %>% 
+  mutate(UPC = str_replace_all(UPC, "-", "."))
+
+# join cereal_product and cereal_sales together
+cereal_ps <- left_join(cereal_product, cereal_sales, by = "UPC")
+
+cereal_numeric <- cereal_ps %>% 
+  mutate(company1 = case_when(
+    str_starts(company, 'General') ~ 'GM', 
+    str_starts(company, 'Kelloggs') ~ 'Kelloggs', 
+    str_starts(company, 'Post') ~ 'Post'))
+
+
+#----
+full_data <- bind_rows(cereal_ps, 
+                       cereal_ps %>% 
+                         filter(promo == 1) %>% 
+                         mutate(ad = 'Promo'))
+
+full_data <-  full_data %>% 
+  filter(company == 'General Mills') %>% 
+  filter(ad != "NONE") %>% 
+  group_by(ad, week) %>%
+  summarise(count_n = n()) %>% 
+  mutate(smoothed = 
+           predict(loess(count_n ~ week)))
+attach(full_data)
+attach(cereal_ps)
+attach(cereal_numeric)
+``` 
+
+Inputs {.sidebar data-width=300}
+-----------------------------------------------------------------------
+  
+```{r, echo=FALSE}
+#I want this to only work with the bar graphs showing A, B, None and promo no promo
+# Select x axis variable      
+#selectInput('x', 'X-Axis Variable', names(ad), c("A", "B", "None"))
+
+# Differentiate by color
+#selectInput('color', 'Promotion', c(0, 1))
+shinyUI(
+  fluidPage(
+    titlePanel("Choose campaign types"),
+
+  sidebarLayout(
+    sidebarPanel(
+    h4("Parameters"),
+    br(),
+    selectInput("Ad", "Ad", c("A","B", "NONE")),
+    selectInput("Promotion", "Promotion", c(0, 1)),
+    ),
+    mainPanel(
+
+      plotlyOutput("lineChart")
+      ))))     
+```
+The selections above give the options for Ad types A (Medium Advertisement), B (Small Advertisement) and None (No Advertisement at all). As well as for Promotions wiht 0 (no promotion) and 1 (Yes a promotion).
+
+<br>
+
+Column {data-width = 1000px}
+-----------------------------------------------------------------------
+```{r ann2, message = FALSE, warning = FALSE, echo = FALSE, include = FALSE}
+
+
+cb_palette <- c("#6600FF", "#66CCCC", "#999999")
+
+# updates to line graph for memo
+weekly_ad_sales <- full_data %>% 
+  ggplot(mapping = aes(x = week, y = smoothed, color = ad)) +
+  scale_color_manual(values = cb_palette) + 
+  geom_line() +
+  guides(color = "none", labels = "none") +  
+  theme_classic() + 
+    theme(panel.background = element_rect(fill = '#EEEEEE', colour = 'black'),
+        plot.background = element_rect(fill = "#EEEEEE")) +
+  labs(x = "Week of the Year", 
+       y = "Number of Sales", 
+       title = "General Mills annual trends of advertisement campaigns",
+       subtitle = "Small ads outperform medium ads all year long") + 
+  
+  geom_text(data = data.frame(x = 39.0202225326685, y = 4.9991581052289, label = "Medium ads"),
+            mapping = aes(x = x, y = y, label = label),
+            hjust = 0.2, vjust = 1L, colour = "#66CCCC",  fontface = 2, inherit.aes = FALSE) + 
+  
+  geom_text(data = data.frame(x = 43.1127335651892, y = 10.7604358222577, label = "Small ads"),
+            mapping = aes(x = x, y = y, label = label),
+            hjust = 0.25,colour = "#6600FF", fontface = 2, inherit.aes = FALSE) +
+  
+  geom_text(data = data.frame(x = 43.5249558287203, y = 27.7144343392386, label = "Promotions"),
+            mapping = aes(x = x, y = y, label = label),
+            colour = "dark grey", inherit.aes = FALSE) +
+  transition_reveal(week)
+
+#ggannotate(weekly_ad_sales)
+
+#weekly_ad_sales
+animate(weekly_ad_sales, nframes = 100)
+anim_save("weekly_ad_sales.gif", animation = last_animation())
+#?geom_smooth
+#?animate()
+#?transition_reveal()
+#ggsave(filename = "weekly_ad_sales.png", plot = animated_weekly)
+#![](weekly_ad_sales.png){width=800px}
+
+```
+![](weekly_ad_sales.gif){width=548px}
+
+```{r, echo = FALSE, eval = FALSE}
+cereal_numeric <- cereal_ps %>% 
+  mutate(company1 = case_when(
+    str_starts(company, 'General') ~ 'GM', 
+    str_starts(company, 'Kelloggs') ~ 'Kelloggs', 
+    str_starts(company, 'Post') ~ 'Post'))
+
+weekly_promo_sales <- cereal_numeric %>% 
+  mutate(promo = as.factor(promo)) %>% 
+  filter(company == 'General Mills') %>% 
+  filter(promo != 0) %>% 
+  group_by(week, ad) %>% 
+  summarise(count_n = n()) %>% 
+  ggplot(mapping = aes(x = week, y = count_n, color = promo)) +
+  scale_color_manual(values = cb_palette) + 
+  geom_smooth(se = FALSE) +
+  theme_classic() + 
+  labs(x = "Week of the Year", 
+       y = "Number of Sales", 
+       title = "General Mills annual trends of promotion campaigns",
+       subtitle = "Promotions") + 
+  
+
+
+weekly_promo_sales
+```
+
+```{r, echo = FALSE}
+
+full_data2 <- bind_rows(cereal_ps, 
+                       cereal_ps %>% 
+                         filter(promo == 1) %>% 
+                         mutate(ad = 'Promo'))
+
+full_data2 <-  full_data2 %>% 
+  filter(company == 'General Mills') %>% 
+  filter(ad != "NONE") %>% 
+  group_by(ad, flavor) %>%
+  summarise(count_n = n())
+
+
+cb_palette <- c("#6600FF", "#66CCCC", "#999999")
+
+
+flavor_campaigns <- full_data2 %>% 
+  mutate(ad = as.factor(ad)) %>% 
+  ggplot(mapping = aes(x = flavor, y = count_n, fill = ad)) +
+  geom_col(position = "dodge") +
+  theme_classic() + 
+  #theme(aspect.ratio=1/2) +
+  theme(panel.background = element_rect(fill = '#EEEEEE', colour = 'black'),
+        plot.background = element_rect(fill = "#EEEEEE")) +
+  guides(color = "none", labels = "none", fill = "none") +  
+  labs(x = "Flavor Type", 
+       y = "Number of Sales", 
+       title = "General Mills Flavors During Campaigns",
+       subtitle = "Toasted is our most popular flavor for any campaign type", legend = "none") +
+       scale_fill_manual(values = cb_palette) +
+          coord_flip() +
+  
+  geom_text(data = data.frame(x = c(4.28665495601049, 3.70334260745696 ),
+    y = c(57.8676442575933, 59.8676442575933),
+    label = c("Promotion", "Medium Ad")),
+    mapping = aes(x = x, y = y, label = label),
+    vjust = 0.3, colour = "white", inherit.aes = FALSE) + 
+    geom_text(data = data.frame(x = 4.02277556023627, y = 50.8676442575933, label = "Small Ad"),
+    mapping = aes(x = x, y = y, label = label),
+    colour = "white", inherit.aes = FALSE)
+
+
+#ggannotate(flavor_campaigns)
+flavor_campaigns
+```
+
+
+
+Column {data-width=600}
+-----------------------------------------------------------------------
+## Sales Through the year
+```{r, include= FALSE, eval = FALSE}
+
+test <- cereal_ps %>% 
+  group_by(week, price) %>% 
+  summarise(med_price = median(price), med_units = median(units)) %>% 
+  ggplot(mapping = aes(x = med_price, y = med_units), color = week) +
+  geom_point() +
+  if (ad == "A"){scale_fill_manual(values = "#66CCCC")}
+  theme_classic()
+  
+test
+```
+
+```{r, include = TRUE, echo = FALSE}
+cereal_ps_scatter <- cereal_ps %>% 
+  filter(company == "General Mills") %>% 
+  select(week, price, units, promo, ad) %>% 
+  group_by(week) %>% 
+  mutate(num_promo = sum(promo), med_price = (median(price)), med_units = (median(units)), med_rev = (med_price * med_units))
+
+
+cereal_scatter <- cereal_ps_scatter %>% 
+  mutate(Tooltip = paste0('Median price: ', med_price, '\nMedian units: ', med_units, '\nNumber of promotions: ', num_promo)) %>% 
+
+    ggplot() +
+  geom_line_interactive(mapping = aes(x = week, y = med_rev, fill = "blue"), color = "#66CCCC") +
+  geom_point_interactive(mapping = aes(x = week, y = med_rev, tooltip= Tooltip,  data_id = med_price), color = "grey") +
+  theme_classic() +
+    theme(panel.background = element_rect(fill = '#EEEEEE', colour = 'black'),
+        plot.background = element_rect(fill = "#EEEEEE")) +
+  labs(x = "Week", 
+       y = "Median Revenue", 
+       title = "Weekly Revenue Regarding Price",
+       subtitle = "The price does not vary much each week, and it is unit sales that seems \nmost impactful. Hover over each point for data information", legend = "none")
+
+girafe(ggobj = cereal_scatter)
+#cereal_scatter
+
+attach(cereal_ps_scatter)
+```
+
+```{r, echo=FALSE, include = FALSE, eval = FALSE}
+
+cereal_ps_scatter %>% 
+  plot_ly(type = "scatter", mode = "lines+markers", x = ~ week, y = ~ med_rev, color = as.factor(ad), text = ~paste("Week:", week,
+                                                                                         '</br> Units:', units,
+                                                                                         '</br> Price:', med_price
+                                                                                         )) %>%  
+  add_trace(y = med_rev, name = 'trace 1', mode = "lines+markers", line = list(shape = "linear")) %>% 
+  layout(title = "Weekly Revenue Regarding Price", xaxis = list(title = "Week"), yaxis = list(title = "Median Revenue"), showlegend = FALSE, xaxis = list(showgrid = F),
+         yaxis = list(gridcolor = F), paper_bgcolor='#EEEEEE',
+       plot_bgcolor='#EEEEEE')
+#I want this to show color for ad type, and then when you hover over it to show median revenue and promo or not
+#?layout()
+```
+
+
+```{r, include=FALSE}
+
+plot_0 <- cereal_ps %>% 
+    group_by(promo, ad) %>%
+  summarise(med_rev = median(price * units))
+
+#plot_0 %>%
+#  ggplot(mapping = aes(x = ad, y = med_rev, fill = as.factor(promo))) + 
+#  geom_bar(stat = "identity", position = "dodge", width = 1) + 
+#  theme_classic() + 
+#  labs(title = "Median Revenue by Ad and Promotion")
+#should I just include this?
+plot_0
+```
+
+*Median is the measurement of the most middle value in the range of revenue that we have, in this case it is more reliable than just the average.
+<div> 
+## Best Combination of Campaigns
+```{r, include=TRUE, echo = FALSE}
+plot_0 <- cereal_ps %>% 
+    group_by(promo, ad) %>%
+  summarise(med_rev = median(price * units))
+
+renderPlot({cereal_ps %>% 
+  #filter(company == "General Mills") %>% 
+  filter(promo == (input$Promotion), ad == (input$Ad)) %>% 
+  group_by(promo, ad) %>% 
+  summarise(med_rev = median(price*units)) %>% 
+  ggplot(mapping = aes(x = ad, y = med_rev, fill = as.factor(promo))) + 
+  geom_bar(stat = "identity", position = position_dodge(.00), binwidth = 0, width = .1) + 
+  theme_classic() + 
+      theme(panel.background = element_rect(fill = '#EEEEEE', colour = 'black'),
+        plot.background = element_rect(fill = "#EEEEEE")) +
+  labs(title = "Best Combination of Campaigns", subtitle = "Highest revenue option is Ad B with a Promotion, bringing in  $33.80 median* dollars \n of revenue. Use the select menu to the left to test combinations", x = "Advertisement Type", y = "Median* Revenue") + coord_flip() +
+    guides(color = "none", labels = "none", fill = "none") +
+    scale_y_continuous(limits = c(0, 35)) +
+    scale_fill_manual(values ="#66CCCC")
+})
+```
