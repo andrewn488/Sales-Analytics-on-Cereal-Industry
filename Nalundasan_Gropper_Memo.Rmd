@@ -1,0 +1,156 @@
+---
+output: html_document
+---
+
+#### **To: Quian and General Mills Management**  
+  
+#### **From: Andrew Nalundasan and Jordan Gropper**  
+  
+#### **Date: July 29, 2021**   
+  
+#### **RE: Findings and actions for advertisement campaign and promotion strategies**  
+
+***
+
+```{r include = FALSE}
+# Set chunk options for the file
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+```
+
+```{r}
+# Course: OMSBA 5210, Seattle University
+# Purpose: Midterm Data Translation Project
+# Date: June 30th, 2021
+# Authors: Andrew Nalundasan and Jordan Gropper
+
+```
+
+```{r message = FALSE, echo = FALSE}
+# Load librarys
+library(tidyverse)
+library(data.table)
+library(kableExtra)
+library(agricolae)
+```
+
+```{r message=FALSE, include=FALSE}
+# read data into environment and assign to variable
+cereal_product <- read_csv("mtp_product_data.csv")
+cereal_sales <- read_csv("mtp_sales_data.csv")
+
+# create new column for 'company' for each cereal company
+cereal_product <- cereal_product %>% 
+  mutate(company = case_when(
+    str_starts(brand, 'GENERAL') ~ 'General Mills', 
+    str_starts(brand, 'KELLOGGS') ~ 'Kelloggs', 
+    str_starts(brand, 'POST') ~ 'Post'))
+
+# remove cereal company name from 'brand' column
+cereal_product <- cereal_product %>% 
+  mutate(brand = str_replace_all(brand, "GENERAL MILLS", "")) %>% 
+  mutate(brand = str_replace_all(brand, "KELLOGGS", "")) %>% 
+  mutate(brand = str_replace_all(brand, "POST", "")) %>% 
+  mutate(flavor = stringr::str_to_title(flavor)) %>% 
+  mutate(brand = str_to_title(brand)) %>% 
+  mutate(brand = str_replace_all(brand, "Cinnamon Tst Cr", "Cinnamon Toast Crunch"))
+
+# update UPC formatting  
+cereal_product <- cereal_product %>%
+  mutate(UPC = str_sub(UPC, 4, -1))
+
+# update UPC formatting
+cereal_product <- cereal_product %>% 
+  mutate(UPC = str_replace_all(UPC, "-", "."))
+
+# join cereal_product and cereal_sales together
+cereal_ps <- left_join(cereal_product, cereal_sales, by = "UPC")
+
+# number of sales between ad campaigns
+# ad A
+gm_ad_a <- cereal_ps %>% 
+  group_by(ad, company) %>% 
+  summarise(count_n = n()) %>% 
+  filter(ad == "A") %>% 
+  filter(company == "General Mills") %>% 
+  pull(count_n)
+
+# ad B
+gm_ad_b <- cereal_ps %>% 
+  group_by(ad, company) %>% 
+  summarise(count_n = n()) %>% 
+  filter(ad == "B") %>% 
+  filter(company == "General Mills") %>% 
+  pull(count_n)
+
+
+# median promo numbers
+promo0_med <- Median.test(cereal_ps$units, as.factor(cereal_ps$promo), alpha = 0.05) 
+
+# promo 0
+promo0_med_units <- promo0_med$medians[1, 1]
+
+# promo 1
+promo1_med_units <- promo0_med$medians[2, 1]
+
+# median units for ad A
+ada_med <- Median.test(cereal_ps$units, as.factor(cereal_ps$ad), alpha = 0.05)
+ada_med_units <- ada_med$medians[1, 1]
+
+# median units for ad B  
+adb_med_units <- ada_med$medians[2, 1]
+``` 
+
+
+Analyzing the data we provided indicated an interesting trend when comparing advertisements and promotions, with one being better than the other for cost efficiency and sales. Additionally, looking at what our competitors are doing in the market has helped us to understand where we can improve and where we are leaders in the market. The dataset analyzed contained 21,850 recorded sales of cereal, split between ourselves and two of our competitors, Kellogg's and Post. We were able to use the information on prices, unit sales, brand, flavor, packaging, promotions and advertisements offered. The data also included the week of the year that the item was sold. The visuals we have provided below illustrate our findings.
+
+
+**Finding 1:** General Mills' small advertisement campaign is just as efficient, if not more efficient than the medium ad campaign 
+
+    - Advice: don't do medium ad campaigns. Stick with the smaller campaigns
+    
+One area of interest that we took time to analyze and run statistical tests on was in looking at the efficiency of the two different types of ad campaigns. We believe and understand that a medium sized campaign would cost more to launch and maintain than a small sized campaign. When we compared these campaign's abilities to sell units, we found that the medium sized campaign yielded `r gm_ad_b` overall sales while the small campaign yielded `r gm_ad_a` overall sales. These numbers indicate that General Mills could gain efficiency by cutting the costs of running medium advertisement campaigns and focusing on small advertisement campaigns. IT goes deeper beyond just which campaigns may have been used more and therefore sold more. Company wide when we look at the Median units sold in all given campaigns it is found that the Small Campaigns actually slightly out perform the Medium ones, selling `r adb_med_units` median units versus `r ada_med_units` median units. This may seem a small difference, but in cutting the costs of hosting campaigns, can make a long term difference. In being able to utilize this information we could implement the change of only running small ad campaigns at all or a majority of stores. If the results are consistent with what we are finding now, then we would know that utilizing small campaigns is our best long term plan.
+
+This means that if the cost of running a small campaign is significantly cheaper, then we may make more money by saving money by just using a small campaign. We looked into this occurrence statistically and found that this very small difference is reinforced, and is consistently this small.There are even weeks across the company where the small campaign outsells the medium campaign. You can see this below in the line graph, portraying for just us at General Mills over the year. 
+
+
+<br>
+![](weekly_ad_sales_smooth.png){width=800px}
+
+With the Small ads dominating not just in over all sales, but also Median unit sales, it makes a lot of sense to take the opportunity to test this finding.
+
+**Finding 2:** Focus in on promotion stores that do the best
+
+    - Advice: Mimic store numbers 230514, 233072, 240824, 241553 & 243941
+
+When it came to the promotions that GM runs we also did an analysis to find the store that did the best median sales of units when it was promoting. From there we broke it down to which of our brands that did the best at that particular store. As you can see below in the table, the labeled stores outsold the others when it came to selling promoted items. The advertisements move less units, but the promotions discount the units, sometimes up to 25% of their actual value. In the case of that drastic of a per unit discount it would be necessary to sell 4 units to break even. So depending on the production costs of the cereal, it may be worth it to do more promotions than advertisements, or vice versa. The advertisements move `r adb_med_units` median units while the promotions move `r promo1_med_units` median units. However, in certain locations promotions do very well. If promotions are to be used, we are encouraging that the company try and mimic what is occurring at the below highlighted stores, which each sold 28 median units of the top brands, Lucky Charms, Cinamon Toast Crunch and Cocoa Puffs. The table shows the store number and corresponding best brand. If these stores' methods of promotion are used at all the other stores, it could increase store wide sales significantly. The use of promotions tends to sell a Median unit amount of `r promo1_med_units` compared to not using any sort of promotion which only sells `r promo0_med_units`.
+
+
+```{r}
+top_stores <- cereal_ps %>% 
+  filter(company == 'General Mills') %>% 
+  filter(promo == '1') %>% 
+  group_by(iri_key, brand) %>% 
+  summarise(med_units = median(units)) %>%
+  ungroup() %>% 
+  arrange(-med_units) %>% 
+  slice(1:5)%>% 
+  kable(align = 'l', 
+        caption = "Top brands of cereal sold at the top 5 stores",
+        col.names = c("Store Number", "Best Brand", "Median Units Sold")) %>% 
+  kable_styling(full_width = FALSE,
+                bootstrap_options = "striped")
+
+top_stores
+```
+
+
+Optimizing our campaigns is very important, as we are being directly competed with by Kelloggs, especially when it comes to selling median units in small advertisement campaigns. If we maximize what we decide to do, it will enable us to sell more, perhaps at a lower cost to us, and begin to grow our annual sales. As the graph below depicts currently our sales decline over the year, where as Kelloggs' increases.
+
+<br>
+![](company_sales_scatter.png){width=800px}
+
+In conclusion, we were able to find two distinct ways of guiding the company to decreasing costs and increasing our potential to sell more units of cereal. Utilizing more small campaigns, and optimizing our promotion strategies in stores will help us compete in the market, enabling us to potentially have an increase in sales throughout the year. If you have any questions about the research done, please feel free to reach out to our team. 
+
+Sincerely, 
+Andrew Nalundasan and Jordan Gropper

@@ -1,0 +1,2127 @@
+---
+title: "Midterm Data Translation Project"
+author: "Jordan Gropper, Andrew Nalundasan"
+date: "7/29/21"   
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+---
+
+# set up data, tidy data, and EDA
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = FALSE}
+# Course: OMSBA 5210, Seattle University
+# Purpose: Midterm Project Technical Appendix
+# Date: July 29th, 2021
+# Author: Jordan Gropper, Andrew Nalundasan
+
+```
+
+```{r message = FALSE}
+library(ggannotate)    # annotation tool
+library(gridExtra)     # use to put graphs together in the same frame
+library(janitor)       # contains tidyverse functions for cross-tables
+library(knitr)         # contains some table formatting functions
+library(GGally)        # contains a custom correlation plot
+library(scales)        # to get $ and , on axis in graph
+library(tidyverse)     # contains ggplot2, dplyr, and several other packages
+library(corrplot)      # used for correlation plot with good looks below
+library(tidyr)         # tidy r
+library(kableExtra)    # extra kable formatting
+library(vtable)        # NHK special
+library(gghighlight)   # visual formatting - highlights
+library(agricolae)     # for statistical testing
+library(huxtable)      # table formatting
+library(jtools)        # export summs table
+library(car)           # linear hypothesis
+library(webshot)       # save a kable() table 
+```
+
+# Load and transform data
+
+```{r}
+# read data into environment and assign to variable
+cereal_product <- read_csv("mtp_product_data.csv")
+cereal_sales <- read_csv("mtp_sales_data.csv")
+
+# create new column for 'company' for each cereal company
+cereal_product <- cereal_product %>% 
+  mutate(company = case_when(
+    str_starts(brand, 'GENERAL') ~ 'General Mills', 
+    str_starts(brand, 'KELLOGGS') ~ 'Kelloggs', 
+    str_starts(brand, 'POST') ~ 'Post'))
+
+# remove cereal company name from 'brand' column
+cereal_product <- cereal_product %>% 
+  mutate(brand = str_replace_all(brand, "GENERAL MILLS", "")) %>% 
+  mutate(brand = str_replace_all(brand, "KELLOGGS", "")) %>% 
+  mutate(brand = str_replace_all(brand, "POST", "")) %>% 
+  mutate(flavor = stringr::str_to_title(flavor)) %>% 
+  mutate(brand = str_to_title(brand)) %>% 
+  mutate(brand = str_replace_all(brand, "Cinnamon Tst Cr", "Cinnamon Toast Crunch"))
+
+# update UPC formatting  
+cereal_product <- cereal_product %>%
+  mutate(UPC = str_sub(UPC, 4, -1))
+
+# update UPC formatting
+cereal_product <- cereal_product %>% 
+  mutate(UPC = str_replace_all(UPC, "-", "."))
+
+# join cereal_product and cereal_sales together
+cereal_ps <- left_join(cereal_product, cereal_sales, by = "UPC")
+
+``` 
+
+
+# Base EDA Step 1: Uni-variate non-graphical EDA
+```{r}
+# look at the data
+head(cereal_ps, 10)
+str(cereal_ps)
+vtable(cereal_ps)
+summary(cereal_ps)
+```
+
+**Comments**
+
++ data appears to be tidy
+
+    - data in each column is of the same variable type
+    - no duplicate columns
+    - each row is an observation for the sale of a unit of cereal
+
++ 6 character variables
+
+    1. UPC
+    2. brand
+    3. flavor
+    4. package
+    5. company
+    6. ad
+
++ 5 numeric variables
+
+    1. iri_key: identifier
+    2. week: 1 to 52 for each week of the year - categorical
+    3. units: 1-28
+    4. price
+    5. promo - binary yes/no
+
++ Summary stats on Quantitative
+
+    - volume: looks evenly distributed
+    - units: appear to be right-skewed because mean >> median
+        - median more representative than mean
+    - price: appears to be right-skewed because Max >> 1st quartile, Median, and 3rd quartile
+        
++ Summary stats of Categorical
+
+    - number obs == 21850
+
+**Questions**
+
+    - Does producer name or brand effect the following:
+        - sales
+        - promos
+        - ads
+        - pricing
+    - Which variable(s) drive price the most?
+    
+
+# Base EDA Step 2: Uni-variate graphical EDA
+
++ Here we will examine each variable individually
+
++ Examine how many observations in each variable
+
+## Categorical/Factor variables:
+
++ Store, unique product number, Flavor, Advertisement, Promo, week, company, Brand, and Package
+
+
+```{r}
+# create objects to visualize all categorical/factor variables
+
+company <- ggplot(data = cereal_ps, mapping = aes(company))
+
+brand <- ggplot(data = cereal_ps, mapping = aes(brand))
+
+flavor <- ggplot(data = cereal_ps, mapping = aes(flavor))
+
+packaging <- ggplot(data = cereal_ps, mapping = aes(package))
+
+advert <- ggplot(data = cereal_ps, mapping = aes(ad))
+
+store <- ggplot(data = cereal_ps, mapping = aes(iri_key))
+
+UPC <- ggplot(data = cereal_ps, mapping = aes(UPC))
+
+promo <- ggplot(data = cereal_ps, mapping = aes(promo))
+
+week_sold <- ggplot(data = cereal_ps, mapping = aes(week))
+```
+
+```{r}
+# visualize all categorical/factor variables
+grid.arrange(
+company + geom_bar(fill = "blue"),
+brand + geom_bar(fill = "blue"),
+flavor + geom_bar(fill = "blue"),
+packaging + geom_bar(fill = "blue"),
+advert + geom_bar(fill = "blue"),
+store + geom_bar(fill = "blue"),
+UPC + geom_bar(fill = "blue"),
+promo + geom_bar(fill = "blue"),
+week_sold + geom_bar(fill = "blue"),
+ncol = 3)
+
+```
+
+**Comments**
+
+    - Kelloggs has the highest amount of sales 
+    - Can't read brand. Running this in chunk below
+        - Frosted Flakes, Froot Loops, Cinammon Toast Crunch are top 3 sellers 
+    - Regular and Toasted flavors are the highest sellers
+    - Boxed cereal dominates the market. Barely anyone purchases cereal in a cup
+    - A and B ads are similiar in count. ad == NONE dominates the market
+    - can't interpret iri_key
+    - Cereal sells more when there's no promo compared to when there is a promo
+    - A few spikes in sales depending on week, but mostly similar. No huge anomalies
+
+**Questions**
+
++ What are the gaps in UPC?
+
++ Do we care about iri_key?
+
++ What company makes the top 3 sellers?
+
++ Why the striking difference in popularity between companies?
+
+    - Because Kelloggs makes the most cereals? 
+    - Because Kelloggs covers the most flavor profiles?
+    - Which company targets both adults and children?
+        - Assumption that kids don't like "Regular" flavor
+        - Is "Regular" flavor a blanket statement?
+    
+
+```{r}
+brand + geom_bar(fill = "blue") + coord_flip()
+```
+
+## Quantitative variables
+
+1. Units
+2. Price
+3. Volume
+
+```{r}
+# create objects for all quantitative variables
+units <- ggplot(data = cereal_ps, mapping = aes(units))
+price <- ggplot(data = cereal_ps, mapping = aes(price))
+volume <- ggplot(data = cereal_ps, mapping = aes(volume))
+
+# visualize all quantitative variables
+grid.arrange(
+units + geom_bar(fill = "blue"),
+price + geom_bar(fill = "blue"),
+volume + geom_bar(fill = "blue"),
+ncol = 3)
+```
+
+**Comments**
+
+    - the higher the units, the less amount is sold
+        - min units == 1
+        - max units == 28
+        - mean units == 8.58
+    - units <- number of cereal packages sold
+    - volume <- cereal package size
+    - highest seller is a cereal priced around $3 - $4
+        - spike in sales at the ~$4.75 price point
+        - Price of cereal ~ $3.75 seems to be the sweet spot
+    - cereal doesn't appear to sell in bulk quantities (sorry, Costco!)
+    - Companies shouldn't even bother with different volume packages
+      
+
+**Questions**
+
++ Who buys cereal at $9.99? This is an outlier.
+
++ Which cereal(s) are sold at the sweet spot of ~$3.75?
+
++ Is it worth it for companies to even bother with different volume packages?
+
+
+# Base EDA Step 3: Multi-variate non-graphical 
+
+## Categorical 
+
+### Promotion and Advertisement
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(promo, ad) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(promo, ad) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%  # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - no advertisements dominate the market
+    - rates of promotion are similar for advertisements A and B
+        - advertisement A has 1% more promos than advertisement B
+        - there are 2% more advertisements for A than there are for B
+    - when a cereal has no promos and no ads, this makes up 74% of cereal sales
+    - when a cereal is promoted and there are no advertisements of it, this makes 14% of cereal sales
+        
+
+**Questions**
+
++ Do promotions have an effect on sales?
+
++ Do advertisements have an effect on sales?
+
++ Why does no promo and no advertisement yield the most sales?
+
+    - this combo makes up 74% of cereal sales
+    
++ Why does a promo and no advertisement yield the second most sales?
+
+    - this combo makes up 14% of cereal sales
+
+### Package and Flavor
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(package, flavor) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(package, flavor) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%  # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - Regular flavor in a box has the most sales (40%)
+    - Toasted flavor in a box has the second most sales (32%)
+    - cereal from a cup barely sells at all (2% of the market)
+
+**Questions**
+
++ Why do companies even sell cups of cereal?
+
++ Do promos and ads have any effect on Regular and Toasted sales?
+
+### Company and UPC
+
+```{r}
+# standard counts
+comp_upc_count <- cereal_ps %>% 
+  tabyl(UPC, company) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) 
+
+head(comp_upc_count, 10)
+
+# Proportion contingency/cross table
+comp_upc_prop <- cereal_ps %>% 
+  tabyl(UPC, company) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2)  # round decimals
+
+head(comp_upc_prop, 10)
+
+```
+
+### Company and Promo
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(company, promo) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(company, promo) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%  # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - Kelloggs sells the most with no promo
+    - Kelloggs sells double the amount of GM with promo
+
++ Practical Significance:
+
+    - Sales appear  to drop significantly when a promo is in effect, but this might be due to the way the data is collected
+    and the fact that we do not have all sales data for each day.
+    - Is this consistent behavior?
+    - Ho: Promotions do not effect sales.
+
+**Questions**
+
++ Why does Kelloggs sell the most without a promo
+
++ Why do sales decrease for all companies when there is a promo?
+
+
+### Company and Advertisement
+
+```{r}
+# standard counts
+co_ads_count <- cereal_ps %>% 
+  tabyl(company, ad) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+co_ads_count
+
+# Proportion contingency/cross table
+co_ads_prop <- cereal_ps %>% 
+  tabyl(company, ad) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%  # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+co_ads_prop
+```
+
+**Comments**
+
+    - Kelloggs sales appear to be double of GM while using Small Advertisements
+    - Kelloggs sales appear to be triple of GM while using Medium Adevertisements
+    - Kelloggs sales appear to be 19% higher than GM when using no ads
+    - All companies experience higher sales with no ads in effect
+    - Small ads appear to be more effective than Medium ads
+        - size of ads do not effect sales for Post 
+    
++ Practical Significance:
+
+    - Sales appear to be boosted when no ads are in effect
+    - Is this consistent behavior?
+    - Ho: Ads have no effect on cereal sales.
+    - Ho: Small ads do not drive higher sales than medium ads. 
+
+**Questions**
+
++ Why are sales higher for all companies when no ads are in effect?
+
+
+### Package and Company
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(company, package) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(company, package) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%   # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - Box cereal dominates the market at 98%
+
+**Questions**
+
+### Flavor and package
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(flavor, package) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(flavor, package) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%   # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - Regular and Toasted boxed cereals appear to make up ~72% of sales
+    - Cup cereal appears to have no practical significance
+
+**Questions**
+
++ Is it worth it for companies to offer cereal in a cup?
+
+    - Practically, it does not make sense. 
+        - 2% of cup sales are for Regular and Toasted only
+        - 0% sales from all other flavors
+    - Ho: Cup cereal has no effect on sales.
+
+### Flavor and promo
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(flavor, promo) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(flavor, promo) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%   # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - Cereal sales drop when a promo is in effect
+
+**Questions**
+
++ Why do sales drop when cereal is being promoted?
+
+### Flavor and ad
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(flavor, ad) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(flavor, ad) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%   # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - no difference between small ads and medium ads for Regular and Toasted sales
+    - Regular appears to sell 8% more than Toasted when no ads are in effect
+    
+**Questions**
+
++ Is it worth it to have ad campaigns at all?
+
+### Brand and ads
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(brand, ad) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(brand, ad) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%     # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped")
+```
+
+**Comments**
+
+    - no practical significance for small and medium ad campaigns for any brand
+    - more sales experienced with no ads in effect
+    
+**Questions**
+
++ Why are more sales happening when there are no ads in effect?
+
+### Brand and promo
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(brand, promo) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(brand, promo) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%     # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped")
+```
+
+**Comments**
+
+    - Higher sales when brands are not being promoted (79%)
+    - Lower sales when brands are being promoted (21%)
+    
+**Questions**
+
++ Why are more sales happening when there are no in-store promotions in effect?
+
+### Brand and Store
+
+```{r}
+#standard counts
+store_brand_count  <- cereal_ps %>% 
+  tabyl(iri_key, brand) %>% # creates table of counts
+  adorn_totals(where = c("row", "col"))
+
+# Proportion contingency/cross table
+store_brand_prop <- cereal_ps %>% 
+  tabyl(iri_key, brand) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2)     # round decimals
+
+
+head(store_brand_count, 10)
+head(store_brand_prop, 10)
+```
+
+
+### Flavor and Brand
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(flavor, brand) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(flavor, brand) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%      # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+```
+
+
+### Company and Flavor
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(company, flavor) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(company, flavor) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%      # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - The market indicates appetite for Regular flavored cereal
+        - How can GM compete with Kelloggs for Regular market share?
+        - Even Post is beating GM on sales of Regular flavored cereal
+    
+**Questions**
+
++ Could ads or promos drive Regular flavored GM cereals up to take market share from Kelloggs Regular flavored cereal?
+
++ Perhaps focus should be on Cinnamon Toast to boost sales in this category where Kelloggs and Post can't compete?
+
+### Week and Company
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(week, company) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(week, company) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%      # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - No practical significance on higher selling weeks for any company
+    - Appears to be consistent sales for all companies year round
+
+### Week and Flavor
+
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(week, flavor) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(week, flavor) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%      # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - No practical significance on higher selling weeks for any flavor
+    - Appears to be consistent sales for all flavors year round
+
+### Week and Brand
+
+```{r}
+#standard counts
+cereal_ps %>% 
+  tabyl(week, brand) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(week, brand) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%      # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+**Comments**
+  
+    - 0 for promotion signifies that there was none, so it is interesting to see that the majority of the data had no advertisement or no promo. 74% of the sales had neither.
+    - The majority of the products were sold in a box, and over 70% of the flavors were either Toasted or Regular.
+    - Each brand appears to have very little overlap on the UPCs, meaning they each have their own identifiers they sell alone
+    - The brands are spread out very evenly throughout the stores, with no single store holding a large portion over the others
+    - Again, it is prevelant that regular or toasted are the main flavors, with frosted flakes and fruit minie wheats being the top brands selling the regular flavor. 
+        - Fruit loops is the exception to this rule, selling over 2,000 units as a fruity flavor.
+
+**Questions**
+
++ What's the driving factor behind 'Regular' and 'Toasted' selling the most?
+
+    - Do promos or advertisements have an effect on Regular and Toasted sales?
+
+
+## Quantitative Variables
+
+### Units and Price
+
+```{r}
+# price
+grid.arrange(
+  # add histogram
+  ggplot(data = cereal_ps, mapping = aes(x = price)) +
+    geom_histogram() + 
+    scale_x_continuous(labels = dollar), 
+  
+  # add boxplot
+  ggplot(data = cereal_ps, mapping = aes(x = 1)) + 
+    geom_boxplot(mapping = aes(y = price)) + 
+    scale_y_continuous(labels = dollar) + 
+    coord_flip()
+)
+```
+
+**Comments**
+
+    - outliers of 9.99 throwing off the data
+    - median at $3.79
+    
+```{r}
+# units
+grid.arrange(
+  # add histogram
+  ggplot(data = cereal_ps, mapping = aes(x = units)) +
+    geom_histogram(), 
+  
+  # add boxplot
+  ggplot(data = cereal_ps, mapping = aes(x = 1)) + 
+    geom_boxplot(mapping = aes(y = units)) + 
+    coord_flip()
+)
+```
+
+**Comments**
+
+    - consistent negative relationship between count and units
+    
+```{r}
+#standard counts
+cereal_ps %>% 
+  tabyl(units, flavor) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(units, flavor) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%      # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - Selling cereal 22+ package increments is rare
+    
+```{r}
+# standard counts
+cereal_ps %>% 
+  tabyl(units, company) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+
+# Proportion contingency/cross table
+cereal_ps %>% 
+  tabyl(units, company) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2) %>%      # round decimals
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped") 
+```
+
+**Comments**
+
+    - GM struggles to compete with Kelloggs when selling median units
+
+```{r}
+# standard counts
+units_price_count <- cereal_ps %>% 
+  tabyl(units, price) %>% # creates table of counts
+  adorn_totals(where = c("row", "col"))
+
+head(units_price_count, 5)
+
+# Proportion contingency/cross table
+units_price_prop <- cereal_ps %>% 
+  tabyl(units, price) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2)      # round decimals
+
+head(units_price_prop, 5)
+
+``` 
+
+### Units and Volume
+
+```{r}
+# volume
+grid.arrange(
+  # add histogram
+  ggplot(data = cereal_ps, mapping = aes(x = volume)) +
+    geom_histogram(), 
+  
+  # add boxplot
+  ggplot(data = cereal_ps, mapping = aes(x = 1)) + 
+    geom_boxplot(mapping = aes(y = volume)) + 
+    coord_flip()
+)
+```
+
+**Comments**
+
+    - Median volume is 1.06
+
+```{r}
+# standard counts
+units_vol_count <- cereal_ps %>% 
+  tabyl(units, volume) %>% # creates table of counts
+  adorn_totals(where = c("row", "col"))
+
+head(units_vol_count, 10)
+
+# Proportion contingency/cross table
+units_vol_prop <- cereal_ps %>% 
+  tabyl(units, volume) %>% # creates table of counts
+  adorn_totals(where = c("row", "col")) %>%  # Total margins
+  adorn_percentages(denominator = "all") %>% # creates proportions
+  adorn_rounding(2)     # round decimals
+
+head(units_vol_prop, 10)
+
+``` 
+
+### Correlation Plot
+
+```{r}
+cor_cereal <- cereal_ps %>% 
+  select_if(is.numeric) %>%   # Use to select just the numeric variables
+  cor() %>% 
+  round(2) 
+
+cor_cereal
+
+```
+
+```{r}
+# use corrplot for correlation matrix
+corrplot(cor_cereal)
+
+# use different color scheme and add numbers to each square
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+
+corrplot(cor_cereal, method = "shade", shade.col = NA, tl.col = "black", tl.srt = 45,
+         col = col(200), addCoef.col = "black", cl.pos = "n", order = "AOE")
+```
+
+**Comments**
+
++ price and promo are negatively correlated
+
++ volume and price are positively correlated
+
++ units and price are negatively correlated
+
++ Remaining correlations are quite weak (close to 0)
+
+
+```{r}
+cor_cereal <- cereal_ps %>% 
+  select_if(is.numeric) %>%   # Use to select just the numeric variables
+  cor()
+
+corrplot(cor_cereal,
+         method = "number",
+         sig.level = 0.05,
+         order = "original",
+         diag = FALSE,
+         type = "upper",
+         tl.srt = 45,
+         tl.col = "black")
+```
+
+**Comments**
+  
+    - Very subtle correlations, nothing super definitive
+
+
+```{r}
+# Tile graph - need count
+grid.arrange(
+  # tile graph on promo and flavor
+  cereal_ps %>% 
+  group_by(promo, flavor) %>% 
+  summarize(count = n()) %>% 
+  ggplot(aes(promo, flavor)) + 
+  geom_tile(aes(fill = -count)),
+  # tile graph on promo and brand  
+  cereal_ps %>% 
+  group_by(promo, brand) %>% 
+  summarize(count = n()) %>% 
+  ggplot(aes(promo, brand)) + 
+  geom_tile(aes(fill = -count)),
+  # tile graph on ad and flavor  
+  cereal_ps %>% 
+  group_by(ad, flavor) %>% 
+  summarize(count = n()) %>% 
+  ggplot(aes(ad, flavor)) + 
+  geom_tile(aes(fill = -count)),
+  # tile graph on ad and brand  
+  cereal_ps %>% 
+  group_by(ad, brand) %>% 
+  summarize(count = n()) %>% 
+  ggplot(aes(ad, brand)) + 
+  geom_tile(aes(fill = -count)), 
+  # tile graph on flavor and company  
+  cereal_ps %>% 
+  group_by(company, flavor) %>% 
+  summarize(count = n()) %>% 
+  ggplot(aes(company, flavor)) + 
+  geom_tile(aes(fill = -count))
+  
+)
+
+```
+
+**Comments**
+
+    - Flavor: Toasted and Regular are the highest sellers with no promo
+    - Flavor: Toasted and Regular are the highest sllers with no ads
+    - Brand: Frosted Flakes, Froot Loops, and Cinnamon Tst Crunch are highest sellers with no promo
+    - Brand: Frosted Flakes, Froot Loops, and Cinnamon Tst Crunch are highest sellers with no ads
+    - Flavor: GM has a gap in Fruit flavor offering. 
+        - If GM had a Fruit flavor to offer, we could compete with Kelloggs 
+    - Flavor: GM has monopoly on Cinnamon Toast flavor
+
+**Questions**
+
++ do ads and promos have any effect on cereal sales at all?
+
+    - Ho: Ads do not have an effect on cereal sales
+    - Ho: Promos do not have an effect on cereal sales
+        - Need to do a chi-squared test for these since dealing with categorical data
+    
+# Base EDA Step 4: Multi-variate graphical
+
+## Step 4.1: Categorical
+
++ Bar graphs with multiple categorical variables
+
+```{r}
+grid.arrange(
+  cereal_ps %>% 
+    mutate(promo = as.factor(promo)) %>% 
+    ggplot(mapping = aes(x = ad, fill = promo)) +
+    geom_bar(position = "dodge"),
+  
+cereal_ps %>% 
+  mutate(promo = as.factor(promo)) %>% 
+  ggplot(mapping = aes(x = brand, fill = promo)) +
+  geom_bar(position = "dodge"),
+
+cereal_ps %>% 
+  mutate(promo = as.factor(ad)) %>% 
+    ggplot(mapping = aes(x = brand, fill = ad)) +
+    geom_bar(position = "dodge"),
+
+ncol = 1)
+```
+
+**Comments**
+
+    - no promo and no ad is the highest seller
+    - cereal sells more with no promo
+
+**Questions**
+
++ Why should companies spend money on ads and promos?
+
+    - It seems like cereal will sell itself
+
+
+```{r}
+grid.arrange(
+cereal_ps %>% 
+  mutate(promo = as.factor(promo)) %>% 
+    ggplot(mapping = aes(x = flavor, fill = promo)) +
+    geom_bar(position = "dodge"),
+
+cereal_ps %>% 
+  mutate(promo = as.factor(ad)) %>% 
+    ggplot(mapping = aes(x = flavor, fill = ad)) +
+    geom_bar(position = "dodge"),
+
+ncol = 1)
+```
+
+**Comments**
+
+    - when there are ads and promos in effect, it appears that promos happen almost half the time that adds do
+    - brands are selling just fine without adds or promotions, as this is the majority of our data
+    - Flavor sales may or may not be impacted by promotions
+  
+**Questions**
+
++ What benefit is there to spending budget on ads and promos?
+    
+```{r}
+grid.arrange(
+cereal_ps %>% 
+  mutate(brand = as.factor(brand)) %>% 
+    ggplot(mapping = aes(x = week, fill = brand)) +
+    geom_bar(position = "dodge"),
+
+ncol = 1)
+```
+
+**Comments**
+
+    - sales of each brand appear to be consistent for the whole year
+
+```{r}
+grid.arrange(
+cereal_ps %>% 
+  mutate(promo = as.factor(flavor)) %>% 
+    ggplot(mapping = aes(x = week, fill = flavor)) +
+    geom_bar(position = "dodge"),
+
+ncol = 1)
+```
+
+**Comments**
+
+    - weekly sales are steady for flavor and brand over time with minimal change.
+    - Regular and toasted are always the weekly top sellers
+
+**Questions**
+
++ do ads or promos occasionally have an inverse relationship with sales?
+
++ for a store that does run adds or promotions do they sell more typically than stores that don't?
+
++ how do adds impact company and brand sales over time?
+
+## Step 4.2: Quantitative
+
+```{r}
+# Code scatterplots using grid.arrange so can see all quant variables together
+grid.arrange(
+  # price on brand
+  cereal_ps %>% 
+    ggplot(mapping = aes(x = brand, y = price)) + 
+    geom_point(position = "jitter") + 
+    scale_y_continuous(labels = dollar), 
+  
+  # price on flavor
+  cereal_ps %>% 
+    ggplot(mapping = aes(x = flavor, y = price)) + 
+    geom_point(position = "jitter") + 
+    scale_y_continuous(labels = dollar),
+  
+  # price on package
+  cereal_ps %>% 
+    ggplot(mapping = aes(x = package, y = price)) + 
+    geom_point(position = "jitter") +    # can't see points all on a single line. Jitter helps see multiple points on same point
+    scale_y_continuous(labels = dollar),
+  
+  # price on company
+  cereal_ps %>% 
+    ggplot(mapping = aes(x = company, y = price)) + 
+    geom_point(position = "jitter") + 
+    scale_y_continuous(labels = dollar), 
+  
+  # price on promo
+  cereal_ps %>% 
+    ggplot(mapping = aes(x = promo, y = price)) + 
+    geom_point(position = "jitter") + 
+    scale_y_continuous(labels = dollar) + 
+    scale_x_continuous(breaks = c(0, 1)), 
+  
+  # price on ad
+  cereal_ps %>% 
+    ggplot(mapping = aes(x = ad, y = price)) + 
+    geom_point(position = "jitter") + 
+    scale_y_continuous(labels = dollar), 
+  
+  ncol = 2
+)
+```
+
+**Comments**
+
+    - price points on brand appear to be relatively similar
+    - It seems that there are a few higher priced regular flavored cereal
+    - A few outliers for Fruit flavor
+    - Toasted flavor is priced the highest
+    - max price for a cup of cereal is ~ $2.50
+    - Appears that GM is the highest priced cereal. Will need to check this
+        - Post has less "cheap" cereals to choose from, and a few more outliers on the higher range than the other companies
+    - price of cereals while no promo is higher 
+        - cereals priced at lower price point when promo is going on
+    - price of cereals between A and B ads appear similar
+        - prices appear higher when no ad is in effect
+
+**Questions**
+
++ What is the median price point between companies?
+
+## Step 4.3: Categorical and quantitative
+
+```{r}
+cereal_numeric <- cereal_ps %>% 
+  mutate(company1 = case_when(
+    str_starts(company, 'General') ~ 'GM', 
+    str_starts(company, 'Kelloggs') ~ 'Kelloggs', 
+    str_starts(company, 'Post') ~ 'Post'))
+
+cb_palette <- c("#999999", "#66CCCC", "#6600FF")
+
+grid.arrange(
+cereal_numeric %>% 
+  mutate(company1 = as.factor(company1)) %>% 
+  group_by(ad, company1) %>% 
+  summarise(med_price = median(price)) %>% 
+  ggplot(mapping = aes(x = ad, y = med_price, fill = company1)) +
+  scale_fill_manual(values = cb_palette) +
+  geom_bar(stat = "identity", position = "dodge", guide = guide_legend(reverse = TRUE)) + 
+  theme_classic() +
+  scale_y_continuous(labels = dollar),
+
+cereal_numeric %>% 
+  mutate(company1 = as.factor(company1)) %>% 
+  group_by(promo, company1) %>% 
+  summarise(med_price = median(price)) %>% 
+  ggplot(mapping = aes(x = promo, y = med_price, fill = company1)) +
+  scale_fill_manual(values = cb_palette) +
+  geom_bar(stat = "identity", position = "dodge", guide = guide_legend(reverse = TRUE)) + 
+  theme_classic() +
+  scale_y_continuous(labels = dollar) + 
+  scale_x_continuous(breaks = c(0, 1)),
+
+cereal_numeric %>% 
+  mutate(company1 = as.factor(company1)) %>% 
+  group_by(ad, company1) %>% 
+  summarise(med_units = median(units)) %>% 
+  ggplot(mapping = aes(x = ad, y = med_units, fill = company1)) +
+  scale_fill_manual(values = cb_palette) +
+  geom_bar(stat = "identity", position = "dodge", guide = guide_legend(reverse = TRUE)) + 
+  theme_classic(),
+
+cereal_numeric %>% 
+  mutate(company1 = as.factor(company1)) %>% 
+  group_by(promo, company1) %>% 
+  summarise(med_units = median(units)) %>% 
+  ggplot(mapping = aes(x = promo, y = med_units, fill = company1)) +
+  scale_fill_manual(values = cb_palette) +
+  geom_bar(stat = "identity", position = "dodge", guide = guide_legend(reverse = TRUE)) + 
+  theme_classic() + 
+  scale_x_continuous(breaks = c(0, 1)),
+
+ncol = 2)
+```
+
+**Comments**
+
+    - price is competitive between GM and closest competitor, Kelloggs
+        - GM is priced highest in ad campaign A
+            - GM sells the most units in ad campaign A
+        - GM is priced lower than Kelogg's in ad campaign B
+            - GM and Kelloggs units sold is similar in ad campaign B
+        - GM and Kelloggs are priced similarly with no ad campaign in effect
+            - GM sells the most units in no ad campaign scenario
+        - price is similar for all 3 companies when no promotion is going on
+            - GM sells the most units with no promo going on 
+        - price is similar for all 3 companies when there is a promo going on
+            - GM sells the most units with a promo going on
+    - ad compaign A seems to boost units sold for GM over the competition
+    - having a promo seems to boost units sold for GM over the competition
+    
+    - Very intriguing that if the three companies are all doing the same thing with promotions or all aren't doing ads that their median price is roughly the same.
+    - When doing any ad campaign it is interesting that Post has a fairly low median price, and sells the least median units
+    - For the promotions all three brands discount their products to the same median, but general mills outsells kellogs by a fair amount, and then out sells post in units by almost double. 
+    - When measuring by median units it does seem effective for each group to do an advertisement, but A (small campaign) sells
+    more units on median for kellogs, and barely less than a medium campaign for general mills.
+
+**Questions** 
+
++ Perhaps a strategy could be to lower the price of GM cereals to boost sales?
+
++ Is doing a promotion truly worth doing for general mills?
+  
+    - They sell another 80% more in units, but is the 25% cost drop worth it?
+
++ Which ad campaign is preferable?
+
+    - ad campaign A appears to be preferable for GM
+    
++ Which company benefits the most from a promotion
+
+    - GM benefits the most from promotions
+
++ Which company benefits most from a small ad campaign?
+
+    - GM benefits the most from campaign A
+
+```{r}
+cereal_numeric <- cereal_ps %>% 
+  mutate(company1 = case_when(
+    str_starts(company, 'General') ~ 1, 
+    str_starts(company, 'Kelloggs') ~ 2, 
+    str_starts(company, 'Post') ~ 3))
+
+cb_palette <- c("#999999", "#66CCCC", "#6600FF")
+ad1 <- c('A', 'B')
+ad2 <- c('B')
+
+grid.arrange(
+  
+cereal_numeric %>% 
+  mutate(promo = as.factor(promo)) %>% 
+  filter(ad %in% ad1) %>%
+  group_by(ad, promo) %>% 
+  summarise(med_price = median(price)) %>% 
+  ggplot(mapping = aes(x = ad, y = med_price, fill = promo)) +
+  scale_fill_manual(values = cb_palette) +
+  geom_bar(stat = "identity", position = "dodge", guide = guide_legend(reverse = TRUE)) + 
+  theme_classic()  +
+  scale_y_continuous(labels = scales :: dollar),
+
+cereal_numeric %>% 
+  mutate(promo = as.factor(promo)) %>% 
+  filter(ad %in% ad1) %>%
+  group_by(ad, promo) %>% 
+  summarise(med_units = median(units)) %>% 
+  ggplot(mapping = aes(x = ad, y = med_units, fill = promo)) +
+  scale_fill_manual(values = cb_palette) +
+  geom_bar(stat = "identity", position = "dodge", guide = guide_legend(reverse = TRUE)) + 
+  theme_classic(),
+
+# filter
+cereal_numeric %>% 
+  mutate(brand = as.factor(brand)) %>% 
+  filter(ad %in% ad2) %>%
+  group_by(ad, brand) %>% 
+  summarise(med_units = median(units)) %>% 
+  ggplot(mapping = aes(x = ad, y = med_units, fill = brand)) +
+  geom_bar(stat = "identity", position = "dodge", guide = guide_legend(reverse = TRUE)) + 
+  theme_classic(),
+
+cereal_numeric %>% 
+  mutate(brand = as.factor(brand)) %>% 
+  filter(promo == 1) %>% 
+  group_by(promo, brand) %>% 
+  summarise(med_units = median(units)) %>% 
+  ggplot(mapping = aes(x = promo, y = med_units, fill = brand)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  guides(labels = "none") +
+  theme_classic(),
+
+ncol = 1)
+```
+
+**Comments**
+
+    - Cherios benefits most from a small ad campaign and promotion, along with Raisin Bran who benefits a lot from a promotion.
+    
+**Questions** 
+
++ How much does each brand actually benefit from the promotion or ad
+
++ Why are other brands not selling more on add or promotion?
+
+
+# Detailed EDA Questions Raised in Base EDA 
+
+```{r}
+
+cb_palette <- c("#999999", "#66CCCC", "#6600FF")
+
+cereal_numeric <- cereal_ps %>% 
+  mutate(company1 = case_when(
+    str_starts(company, 'General') ~ "GM", 
+    str_starts(company, 'Kelloggs') ~ "Kelloggs", 
+    str_starts(company, 'Post') ~ "Post"))
+
+#stores that do promotions (==1) vs stores that don't (==0)
+#trying to plot just two lines, one showing the total sales from stores that do use promos and stores that don't
+stores_weekly <- cereal_numeric %>% 
+  mutate(company1 = as.factor(company1)) %>% 
+  group_by(week, company1) %>% 
+  summarise(count_n = n()) %>% 
+  ggplot(mapping = aes(x = week, y = count_n, color = company1, legend = "none")) +
+  scale_color_manual(values = cb_palette) + 
+  geom_line() + 
+  theme_classic()
+
+stores_weekly
+
+```
+
+```{r}
+cb_palette <- c("#999999", "#66CCCC", "#6600FF")
+
+promo_weekly <- cereal_numeric %>% 
+  mutate(promo = as.factor(promo)) %>% 
+  filter(company == 'General Mills') %>% 
+  group_by(week, promo) %>% 
+  summarise(count_n = n()) %>% 
+  ggplot(mapping = aes(x = week, y = count_n, color = promo, legend = "none")) +
+  scale_color_manual(values = cb_palette) + 
+  geom_line()
+
+ad_weekly <- cereal_numeric %>% 
+  mutate(ad = as.factor(ad)) %>% 
+  filter(company == 'General Mills') %>% 
+  group_by(week, ad) %>% 
+  summarise(count_n = n()) %>% 
+  ggplot(mapping = aes(x = week, y = count_n, color = ad, legend = "none")) +
+  scale_color_manual(values = cb_palette) + 
+  geom_line()
+
+grid.arrange(
+ad_weekly,
+promo_weekly,
+ncol = 2)
+```
+
+**Comments**
+
+    - It appears that brand impacts sales much more than a promotion or advertisement does
+    - The difference between sales with ad type A and ad type B is small, they sell relatively the same units.
+    - There are definitely 4 spikes in the above where non promotions sold so well, maybe don't offer promotions those days
+
+**Questions**
+    
+    - For GM which brands sold the best during promo or ad?
+    
+
+```{r}
+
+cb_palette <- c("#6600FF", "#66CCCC")
+
+# updates to line graph for memo
+weekly_ad_sales_smooth <- cereal_numeric %>% 
+  mutate(ad = as.factor(ad)) %>% 
+  filter(company == 'General Mills') %>% 
+  filter(ad != "NONE") %>% 
+  group_by(week, ad) %>% 
+  summarise(count_n = n()) %>% 
+  ggplot(mapping = aes(x = week, y = count_n, color = ad, legend = "none")) +
+  scale_color_manual(values = cb_palette) + 
+  geom_smooth(se = FALSE) +
+  guides(color = "none", labels = "none") +  
+  theme_classic() + 
+  labs(x = "Week of the Year", 
+       y = "Number of Sales", 
+       title = "General Mills annual trends of advertisement campaigns",
+       subtitle = "Small ads outperform medium ads all year long") + 
+  
+  geom_text(data = data.frame(x = 39.0202225326685, y = 4.6481581052289, label = "Medium ads"),
+            mapping = aes(x = x, y = y, label = label),
+            hjust = 0.2, vjust = 1L, colour = "#66CCCC",  fontface = 2, inherit.aes = FALSE) + 
+  
+  geom_text(data = data.frame(x = 43.1127335651892, y = 10.6604358222577, label = "Small ads"),
+            mapping = aes(x = x, y = y, label = label),
+            hjust = 0.25,colour = "#6600FF", fontface = 2, inherit.aes = FALSE)
+
+
+# view the viz
+weekly_ad_sales_smooth
+
+# annotate the viz
+#ggannotate(weekly_ad_sales)
+
+# save the viz
+ggsave(filename = "weekly_ad_sales_smooth.png", plot = weekly_ad_sales_smooth)
+```
+
+
+
+```{r}
+cereal_numeric <- cereal_ps %>% 
+  mutate(ad_num = case_when(
+    str_starts(ad, 'none') ~ 1, 
+    str_starts(ad, 'A') ~ 2, 
+    str_starts(ad, 'B') ~ 3))
+
+cb_palette <- c("#999999", "#66CCCC", "#6600FF")
+
+promo_weekly_mp <- cereal_numeric %>% 
+  group_by(week, promo) %>% 
+  summarise(count_n = n(), med_price = median(price)) %>% 
+  ggplot(mapping = aes(x = week, y = med_price, color = as.factor(promo), legend = "none")) +
+  scale_color_manual(values = cb_palette) + 
+  scale_y_continuous(labels = scales :: dollar) +
+  geom_line()
+
+ad_weekly_mp <- cereal_numeric %>% 
+  group_by(week, ad_num) %>% 
+  summarise(count_n = n(), med_price = median(price)) %>% 
+  ggplot(mapping = aes(x = week, y = med_price, color = as.factor(ad_num), legend = "none")) +
+  scale_color_manual(values = cb_palette) + 
+  scale_y_continuous(labels = scales :: dollar) +
+  geom_line()
+
+grid.arrange(
+ad_weekly_mp,
+
+promo_weekly_mp,
+ncol = 1)
+
+```
+
+
+```{r}
+grid.arrange(
+  cereal_ps %>% 
+    group_by(week, company) %>% 
+    summarise(med_price = median(price)) %>% 
+    ggplot(mapping = aes(x = week, y = med_price, color = company)) +
+    geom_point() + 
+    labs(title = "") + 
+    geom_smooth(method = "lm", se = FALSE),
+  
+  cereal_ps %>% 
+    group_by(week, company) %>% 
+    summarise(count_n = n()) %>% 
+    ggplot(mapping = aes(x = week, y = count_n, color = company)) +
+    geom_point() + 
+    labs(title = "Annual sales trend for all cereal companies") + 
+    geom_smooth(method = "lm", se = FALSE)
+
+)
+```
+
+**Comments**
+
+    - GM and Kelloggs median price unifies towards the end of the year (after week 30)
+    - Kelloggs has higher sales than GM all year
+        - GM does not seem like a threat to Kelloggs at all 
+    - GM sales of units seemed to decline overtime, whereas kelloggs grew. Why is that?
+    
+```{r}
+# touch up scatter plot and save for memo
+
+cb_palette <- c("#6600FF", "#999999", "#66CCCC")
+
+company_sales_scatter <- cereal_ps %>% 
+  group_by(week, company) %>% 
+  summarise(count_n = n()) %>% 
+  ggplot(mapping = aes(x = week, y = count_n, color = company)) +
+  scale_color_manual(values = cb_palette) +
+  geom_point(alpha = 0.5) + 
+  labs(x = "Week of the Year",
+       y = "Number of Sales",
+       title = "Annual sales trends for all cereal companies",
+       subtitle = "Strategic ad campaigns could help influence positive sales trends") + 
+  guides(color = "none", labels = "none") + 
+  theme_classic() +
+  theme(axis.ticks.x = element_blank()) + 
+  theme(axis.ticks.y = element_blank()) +
+  geom_smooth(method = "lm", se = FALSE) + 
+  
+  geom_text(data = data.frame(x = 48.5822707072111, y = 69.4390740593849, label = "Post"),
+            mapping = aes(x = x, y = y, label = label),
+            hjust = 0L, colour = "#66CCCC", fontface = 2, inherit.aes = FALSE) + 
+  
+  geom_text(data = data.frame(x = c(47.7472046672058, 46.1814558421958 ),
+                              y = c(282.469108673468, 167.977195797176),
+                              label = c("Kellogg's", "General Mills")),
+            mapping = aes(x = x, y = y, label = label),
+            hjust = 0.2, colour = c("#999999", "#6600FF"), fontface = 2, inherit.aes = FALSE)
+
+# view the viz
+company_sales_scatter
+
+# make annotations
+# ggannotate(company_sales_scatter)
+
+# save the viz
+ggsave(filename = "company_sales_scatter.png", plot = company_sales_scatter)
+
+```
+
+        
+```{r}
+# Focus on GM only
+grid.arrange(
+  # effects of ads on price
+  cereal_ps %>% 
+    filter(company == "General Mills") %>% 
+    group_by(week, company, ad) %>% 
+    summarise(med_price = median(price)) %>% 
+    ggplot(mapping = aes(x = week, y = med_price, color = ad)) +
+    geom_point(alpha = 0.5) + 
+    labs(title = "Effect of ads on price") +
+    geom_smooth(method = "lm", se = FALSE) + 
+    scale_y_continuous(labels = dollar),
+
+  # effects of ads on sales
+  cereal_ps %>% 
+    filter(company == "General Mills") %>% 
+    group_by(week, company, ad) %>% 
+    summarise(count_n = n()) %>% 
+    ggplot(mapping = aes(x = week, y = count_n, color = ad)) +
+    geom_point(alpha = 0.5) + 
+    labs(title = "Effect of ads on sales") +
+    geom_smooth(method = "lm", se = FALSE),
+  
+  cereal_ps %>% 
+  # effects of promo on price
+    filter(company == "General Mills") %>% 
+    group_by(week, company, promo) %>% 
+    mutate(promo = as.factor(promo)) %>% 
+    summarise(med_price = median(price)) %>% 
+    ggplot(mapping = aes(x = week, y = med_price, color = promo)) +
+    geom_point(alpha = 0.5) + 
+    labs(title = "Effect of promos on price") +
+    geom_smooth(method = "lm", se = FALSE) + 
+    scale_y_continuous(labels = dollar),
+  
+  # effects of promos on sales
+  cereal_ps %>% 
+    filter(company == "General Mills") %>% 
+    mutate(promo = as.factor(promo)) %>% 
+    group_by(week, company, promo) %>% 
+    summarise(count_n = n()) %>% 
+    ggplot(mapping = aes(x = week, y = count_n, color = promo)) +
+    geom_point(alpha = 0.5) + 
+    labs(title = "Effect of promos on sales") +
+    geom_smooth(method = "lm", se = FALSE),
+  
+  ncol = 2
+)
+```
+
+```{r} 
+cb_palette <- c("#6600FF", "#999999", "#66CCCC")
+
+scatter_price <- cereal_ps %>% 
+  group_by(week, company) %>% 
+  summarise(med_price = median(price)) %>% 
+  ggplot(mapping = aes(y = med_price, x = week, color = company)) +
+  scale_color_manual(values = cb_palette) +
+  geom_point() + scale_y_continuous(labels = scales :: dollar)
+
+scatter_units <- cereal_numeric %>% 
+  group_by(week, company) %>% 
+  summarise(med_units = median(units)) %>% 
+  ggplot(mapping = aes(y = med_units, x = week, color = company)) +
+  geom_point() +
+  scale_color_manual(values = cb_palette)
+
+# view the plots
+grid.arrange(
+  
+scatter_price,
+
+scatter_units,
+
+ncol = 1)
+
+```
+
+## Deep Dive 1:
+
++ Which brand from GM sold best at which store during promotion? (could do the same thing for advert B or A)
+
+```{r}
+
+cb_palette <- c("#33CCFF", "#999999", "#660099", "#CC3399")
+
+top_stores <- cereal_ps %>% 
+  filter(company == 'General Mills') %>% 
+  filter(promo == '1') %>% 
+  group_by(iri_key, brand) %>% 
+  summarise(med_units = median(units)) %>%
+  ungroup() %>% 
+  arrange(-med_units) %>% 
+  slice(1:5) %>% #Derived table from here
+  
+  ggplot() +
+  geom_col(mapping = aes(x = iri_key, y = med_units, fill = brand)) +
+  theme_classic() +
+  scale_fill_manual(values = cb_palette) + 
+  labs(title = "Top 5 Stores For Promotions", 
+       subtitle = "In these stores there is also the best highlighted brand of cereal to sell during the promotion", 
+       fill = "Cereal Brand", 
+       y = "Summed Units Sold", 
+       x = "Store Number") +
+  coord_flip() + 
+  
+  geom_text(data = data.frame(x = c(240910.357235577, 241678.752707473, 244086.39185275),
+                              y = c(23.6560426647789, 23.6560426647789, 23.6560426647789 ),
+                              label = c("Store 240824", "Store 233072", "Store 230514 ")),
+            mapping = aes(x = x, y = y, label = label),
+            hjust = 0.55, colour = "white", inherit.aes = FALSE) + 
+  
+  geom_text(data = data.frame(x = 233072.72342223, y = 23.6560426647789, label = "Store 241553"),
+            mapping = aes(x = x, y = y, label = label),
+            hjust = 0.55, vjust = 0.35, colour = "white", inherit.aes = FALSE) + 
+  
+  geom_text(data = data.frame(x = 234609.514366023, y = 20.9131311236538, label = "Each of the top 5 stores sold 28 units \nduring the promotion"),
+            mapping = aes(x = x, y = y, label = label),
+            inherit.aes = FALSE) + 
+  
+  geom_text(data = data.frame(x = 230511.405182574, y = 23.6560426647789, label = "Store 243941"),
+            mapping = aes(x = x, y = y, label = label),
+            hjust = 0.55, vjust = 0.35, colour = "white", inherit.aes = FALSE)
+
+# view the viz
+top_stores 
+
+# make annotations
+#ggannotate(top_stores)
+
+# save the viz
+ggsave(filename = "Best_Promo_Stores.png", plot = top_stores)
+```
+
+```{r}
+# make this bar chart a table and save it
+top_stores <- cereal_ps %>% 
+  filter(company == 'General Mills') %>% 
+  filter(promo == '1') %>% 
+  group_by(iri_key, brand) %>% 
+  summarise(med_units = median(units)) %>%
+  ungroup() %>% 
+  arrange(-med_units) %>% 
+  slice(1:5)%>% 
+  kable(align = 'l', booktabs = TRUE, 
+        caption = "Top brands of cereal sold at the top 5 stores",
+        col.names = c("Store Number", "Best Brand", "Median Units Sold")) %>% 
+  kable_styling(full_width = F,
+                latex_options = "scale_down",
+                bootstrap_options = "striped")
+
+top_stores
+
+```
+
+
+**Comments**
+
+    - Each of the top 5 stores sold a median of 28 units while a promotion was in effect
+    - Displayed top 3 cereal brands at each store
+
+```{r}
+ggplot() +
+  geom_col(data = cereal_ps, mapping = aes(x = iri_key, y = units, fill = brand))
+
+```
+
+
+
+## Deep Dive 2:
+
++ Looking at the top 5 most selling stores, and promotion sold units vs. no promo sold units
+
+```{r}
+cereal_ps %>% 
+  filter(company == 'General Mills') %>% 
+  mutate(promo = as.factor(promo)) %>% 
+  group_by(iri_key, promo) %>% 
+  summarise(sum_units = sum(units)) %>% 
+  #arrange(-sum_units) %>% 
+  ungroup() %>% 
+  slice(1:10) %>% 
+  
+  ggplot(mapping = aes(x = iri_key, y = sum_units, fill = promo)) +
+  geom_col(position = "dodge") + 
+  theme_classic() + 
+  scale_x_continuous(n.breaks = 5)
+
+```
+
+
+**Comments**
+
+    - It is not consistent that stores using promotions sell more promoted products than not promoted
+    - Interesting that stores without promotions still sell a lot of products in general
+    
+**Questions**
+
+    - It would be really important to look statistically at how often promotions out sell unmpromoted items
+    - Are pormotions cost effective?
+
+## Deep Dive 3: 
+
++ Which stores sell the most of the top brands under campaign A?
+    
+```{r}
+## Deep Dive 3:
+cb_palette <- c("#33CCFF", "#999999", "#660099", "#CC3399")
+
+cereal_ps %>% 
+  filter(company == 'General Mills') %>% 
+  filter(ad == 'A') %>% 
+  group_by(iri_key, brand) %>% 
+  summarise(med_units = median(units)) %>%
+  ungroup() %>% 
+  arrange(-med_units) %>% 
+  slice(1:5) %>% 
+  
+  ggplot() +
+  geom_col(mapping = aes(x = iri_key, y = med_units, fill = brand)) +
+  theme_classic() +
+  scale_fill_manual(values = cb_palette) + 
+  labs(title = "Top 5 Stores For Ad Campaign A", 
+       subtitle = "In these stores there is also the best highlighted brand of cereal to sell during the Advertisement", 
+       fill = "Cereal Brand", 
+       y = "Median Units Sold", 
+       x = "Store Number") +
+  coord_flip()
+```
+
+**Comments**
+  
+    - Again the set amount of max median units sold is 28, just like with the promotion.
+    - It is interesting the cinnammon toast crunch, lucky charms and cocoa puffs are still here as top sellers, just like
+     in the promo
+     
+
+**Questions**
+
+    - It is very important to check the statistical differences in the sales rates of A and B, because it is easy
+    to look at the top selling stores and say that they are similar.
+
+## Deep Dive 4:
+
++ Which stores sell the most of the top brands under campaign B?
+
+```{r}
+cb_palette <- c("#33CCFF", "#999999", "#660099", "#CC3399")
+
+cereal_ps %>% 
+  filter(company == 'General Mills') %>% 
+  filter(ad == 'B') %>% 
+  group_by(iri_key, brand) %>% 
+  summarise(med_units = median(units)) %>%
+  ungroup() %>% 
+  arrange(-med_units) %>% 
+  slice(1:5) %>% 
+  
+  ggplot() +
+  geom_col(mapping = aes(x = iri_key, y = med_units, fill = brand)) +
+  theme_classic() +
+  scale_fill_manual(values = cb_palette) + 
+  labs(title = "Top 5 Stores For Advertisement B", 
+       subtitle = "In these stores there is also the best highlighted brand of cereal to sell during the Advertisement", 
+       fill = "Cereal Brand", 
+       y = "Median Units Sold", 
+       x = "Store Number") +
+  coord_flip() 
+
+```
+**comments**
+
+    - Interesting that these brands are here, as they were not in any of the other top 5 selling stores
+    - again, max median units sold during a campaign is 28
+    
+**Questions**
+
+    - So which campaign is actually selling more units, and what is most cost effective?
+    
+# Statistical EDA
+
+## Univariate Regression
+
+```{r}
+#chisq.test(cereal_ps$price, cereal_ps$ad)
+
+#chisq.test(cereal_ps$units, cereal_ps$ad)
+
+#chisq.test(cereal_ps$price, cereal_ps$promo)
+
+#chisq.test(cereal_ps$units, cereal_ps$promo)
+
+#?chisq.test
+price_ad <- lm(formula = price ~ ad, data = cereal_ps)
+
+summary(price_ad)
+export_summs(price_ad)
+```
+
+**Comments** 
+
++ Does ad impact price?
+
+    - Ho: Running advertisements does not impact the price of the sold products
+
+**Practical Significance**
+
+    - On average, cereals under ad campaign B are priced 13 cents lower than ad campaign A
+    
+**Statistical Significance**
+
+    - Ads have a very consistent and large impact on price (large F-statistic of 425), with a p-value of less than .001
+    - The data is large, but is most likely only a small fraction of all total cereal bought throughout the year here in the US. There are millions of households all buying cereal, and we have a mere fraction of that.
+    
+**Technical sentence**
+
+    - We reject the null hypothesis that running ad campaigns does not impact the price of the sold products
+
+**Non-technical sentence**
+
+    - Running ad campaigns impacts the price of cereal
+    
+
+```{r}
+price_promo <- lm(formula = price ~ promo, data = cereal_ps)
+
+summary(price_promo)
+export_summs(price_promo)
+```
+
+**Comments** 
+
++ Does promotion impact price
+
+    - Ho: Running a promotion does not impact the price of the product
+
+**Practical Significance**
+
+    - On average, cereals that are being promoted are priced 1 dollar lower than cereals that are not being promoted
+    
+**Statistical Significance**
+
+    - Promotions have a very consistent and large impact on price (large F-statistic of 4358), with a p-value of less than .001
+    - The data is large, but is most likely only a small fraction of all total cereal bought throughout the year here in the US. There are millions of households all buying cereal, and we have a mere fraction of that.
+    
+**Technical sentence**
+
+    - We reject the null hypothesis that running promotions does not impact the price of the sold products
+
+**Non-technical sentence**
+
+    - Running promotions impacts the price of cereal
+
+```{r}
+units_ad <- lm(formula = units ~ ad, data = cereal_ps)
+
+
+summary(units_ad)                 
+export_summs(units_ad)
+
+```
+
+**Comments** 
+
++ Does ad impact units sold?
+
+    - Ho: Running an advertisement does not change the amount of units sold
+
+**Practical Significance**
+
+    - On average, cereals under ad campaign B sell 0.55 units more than cereals under ad campaign A
+    
+**Statistical Significance**
+
+    - Ads have a consistent and large impact on units sold, with a p-value of less than .001
+    - The data is large, but is most likely only a small fraction of all total cereal bought throughout the year here in the US. There are millions of households all buying cereal, and we have a mere fraction of that.
+    
+**Technical sentence**
+
+    - We reject the null hypothesis that running advertisements does not change the amount of units sold
+
+**Non-technical sentence**
+
+    - Ad campaigns impact the units of cereal sold
+
+```{r}
+units_promo  <- lm(formula = units ~ promo, data = cereal_ps)
+
+summary(units_promo)
+export_summs(units_promo)
+```
+
+**Comments** 
+
++ Does promotion impact units sold?
+
+    - Ho: Running a promotion does not impact the amount of units sold
+
+**Practical Significance**
+
+    - On average, cereals that are being promoted sell 3.31 more units than cereals that are not being promoted
+    
+**Statistical Significance**
+
+    - Promotions have a consistent and large impact on units (large F-statistic of 912), with a p-value of less than .001
+    - The data is large, but is most likely only a small fraction of all total cereal bought throughout the year here in the US. There are millions of households all buying cereal, and we have a mere fraction of that.
+    
+**Technical sentence**
+
+    - We reject the null hypothesis that running promotions does not impact the amount of units sold
+
+**Non-technical sentence**
+
+    - Cereal promotions impact the amount of units sold
+
+## Wilcox Test
+
++ Advertisement and Promotions on Price
+
+```{r}
+wilcox.test(cereal_ps$price[cereal_ps$promo == 0], cereal_ps$price[cereal_ps$promo == 1], conf.int = TRUE)
+
+wilcox.test(cereal_ps$price[cereal_ps$ad == 'NONE'], cereal_ps$price[cereal_ps$ad == 'B'], conf.int = TRUE)
+
+wilcox.test(cereal_ps$price[cereal_ps$ad == 'NONE'], cereal_ps$price[cereal_ps$ad == 'A'], conf.int = TRUE)
+```
+
+**Comments**
+
+    - we are testing the median to see if it is any different on prices sold with or without an ad/promo
+    - Wilcox on promo very statistically significant with an extremely small Pvalue, and the difference of the medians
+    is 1, showing a decrease in price of $1
+    - Wilcox on Ad type A very statistically significant with an extremely small Pvalue, and the difference of the medians
+    is only .74, showing a decrease in price of $.74 with ad type B 
+    - Wilcox on Ad type B very statistically significant with an extremely small Pvalue, and the difference of the medians
+    is .60, showing a decrease in price of $.60 with ad type A 
+    -This further goes to show that advertisements and promotions do impact the price of the cereal, so we can reject that null hypothesis
+
++ Advertisement and Promotions on Units sold
+
+```{r}
+wilcox.test(cereal_ps$units[cereal_ps$promo == 0], cereal_ps$units[cereal_ps$promo == 1], conf.int = TRUE)
+
+wilcox.test(cereal_ps$units[cereal_ps$ad == 'NONE'], cereal_ps$units[cereal_ps$ad == 'B'], conf.int = TRUE)
+
+wilcox.test(cereal_ps$units[cereal_ps$ad == 'NONE'], cereal_ps$units[cereal_ps$ad == 'A'], conf.int = TRUE)
+
+```
+
+**Comments**
+
+    - we are testing the median to see if it is any different on units sold with or without an ad/promo
+    - Wilcox on promo very statistically significant with an extremely small Pvalue, and the difference of the medians
+    is almost 3, showing 3 more units sold with a promo
+    - Wilcox on Ad type A very statistically significant with an extremely small Pvalue, and the difference of the medians
+    is almost 3, showing 3 more units sold with ad type B
+    - Wilcox on Ad type B very statistically significant with an extremely small Pvalue, and the difference of the medians
+    is 2, showing 3 more units sold with ad type A
+    - This goes to further enforce how we can reject the null hypothesis because advertisement and promotions do impact unit sales
+
+## Median Test
+
+```{r}
+Median.test(cereal_ps$units, as.factor(cereal_ps$promo), alpha = 0.05)
+
+Median.test(cereal_ps$units, as.factor(cereal_ps$ad), alpha = 0.05)
+```
+
+**Comments**
+
+    - we are testing the median to see the difference in units sold with an ad or promo
+    - Again, we see that it is statistically significant in the difference for promotions, and when we look at the count it is aparent that the median difference is 4 units, in the favor of a promotion,  compared to what we saw visually.
+    -We can see that with the 2 different advertisement options, A does sell the most units, but the small campaign out sells the medium sized campaign when it comes to Median.
+    -A combination of ad and promo seems most favorable.
+
+
+```{r warning=FALSE}
+pairwise.t.test(cereal_ps$units, cereal_ps$ad, p.adjust.method = "bon")
+pairwise.t.test(cereal_ps$units, cereal_ps$promo, p.adjust.method = "bon")
+
+pairwise.t.test(cereal_ps$price, cereal_ps$ad, p.adjust.method = "bon")
+pairwise.t.test(cereal_ps$price, cereal_ps$promo, p.adjust.method = "bon")
+
+
+```
+**comments**
+
+    - Not as useful as the wilcox test, does show that advertisement and promos do have a direct impact on sales and price
+
+## More 1:1 Regression
+
+
+```{r}
+# regress units on store 
+reg_1 <- lm(units ~ iri_key, data = cereal_ps)
+
+# view table
+export_summs(reg_1)
+
+# regress units on ad and control for promo
+reg_2 <- lm(units ~ factor(ad) + factor(promo), data = cereal_ps)
+
+export_summs(reg_2)
+
+# run linear hypothesis with Ho: ad campaign B has no effect on units sold
+linearHypothesis(reg_2, 'factor(ad)B = 0')
+```
+
+```{r}
+cereal_reg <- lm(formula = units ~ iri_key + price + volume + flavor + brand + company + week + promo + ad, data = cereal_ps)
+cereal_sreg <- lm(formula = units ~ iri_key + price + volume + company + week + promo + ad, data = cereal_ps)
+
+summary(cereal_reg)
+summary(cereal_sreg)
+
+#export_summs(cereal_reg)
+#export_summs(cereal_sreg)
+```
+
+
+**Comments**
+
+    - the full regression with all variables is not nearly as useful as the 1:1
+    - store location and week appear to have no impact on units sold
+    - Promotion, and ad also seem to have an impact, though minimal, less than a single unit
+    - price has an inverse relationship, that means they sell 2 less units per dollar increased
+    - The most interesting relationship for us is still the statistically significant but not as drastic impact
+    of the ad and promotions shown in the regression at the top. When compared with Medians Units the impact is more practical.
+
+# Summary
+
+1. Advertisement campaign A (small ad) is just as efficient, if not more efficient than the advertisement campaign B (medium ad) 
+
+    - Advice: don't do medium ad campaigns. Stick with the smaller campaigns (verify this)
+    - GM to focus effort on small sized ad campaigns to drive sales 
+        - GM is currently on a negative annual sales trend
+        - Main competitor, Kellogg's, has a positive sales trend
+        - GM must make adjustments to positively influence sales and continuing competing in cereal market
+    
+2. Focus in on promotion store that does the best
+    
+    - Focus on store and what their promotion tactics are and see if it can be applied to other stores to increase unit sales for GM. 
+    - Current promotion strategies are ineffective
+        - They decrease the prices between 5% - 25%
+            - This requires the sale of more units to break even, and even more sales to make a profit
+    
