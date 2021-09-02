@@ -1,2 +1,2 @@
 # Marketing-Campaign-Aanalysis
-Marketing Campaign Data that I analyzed to provide business insights and promote efficiency. Please read README
+Marketing Campaign Data that I analyzed to provide business insights and promote efficiency. Please read README. This project was built by an associate and I that dug through sales data from different cereal companies to get an idea of their different advertisement campaigns, and how efficient their marketing was. Based on that we then built a presentation and flexdashboard. It was really interesting trying to find the best statistical way optimize the sales and campaigns, really enjoyed this project. Please look through the html or markdown versions of the code to look through our techinical appendix, visuals and dashboard. 
